@@ -9,6 +9,10 @@ node_modules
 # Gerado dentro da imagem, na etapa de build.
 client/dist
 
+# O app de computador empacotado. Centenas de megabytes de Electron que a
+# imagem do servidor não usa.
+dist-app
+
 # Segredos e coisas locais. O .env não entra: no Dokploy a configuração vem
 # das variáveis de ambiente, e uma cópia dentro da imagem só serviria para
 # vazar e para divergir.

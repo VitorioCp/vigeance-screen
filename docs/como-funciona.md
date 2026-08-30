@@ -28,6 +28,12 @@ aba normal do navegador                                  atividade (iframe)
 
 Quem assiste nunca sai do Discord. Só quem mostra passa por uma aba.
 
+**Dentro do app isso não vale.** A janela do Electron concede
+`display-capture` a si mesma, então `getDisplayMedia()` responde e a
+transmissão nasce na própria página — a aba de captura nunca chega a abrir. O
+mesmo `broadcastFromHere()` que quase sempre falha no iframe é o caminho
+normal lá. Ver "O app", mais abaixo.
+
 Se um dia o Discord conceder `display-capture`, o botão **"Testar captura no
 iframe"** (no painel de detalhes) passa a funcionar — e aí a aba externa pode
 sumir. A atividade já tenta capturar internamente antes de cair para a aba.
@@ -146,6 +152,62 @@ Controle vai em JSON: `start`, `config`, `audio-config`, `stop`
   rebuildar a cada troca de credencial, e esquecer disso não dava erro: a
   atividade abria e só quebrava no login.
 
+## O app
+
+O app existe para inverter quem hospeda. Pelo terminal, uma pessoa liga o
+servidor e ele serve todo mundo; no app, cada pessoa que cria uma sala hospeda
+a sua. Isso não pediu um servidor novo — pediu uma casca que ligue o que já
+existe, e que saiba quando abrir o túnel.
+
+```
+app/main.js ──fork──► server/index.js   (porta 0, o sistema escolhe)
+     │                      ▲
+     │                      │ { tipo: 'origem' }
+     └──abrirTunel──► cloudflared ──► https://…trycloudflare.com
+```
+
+**O servidor roda num processo separado.** Ele chama `process.exit()` quando o
+arranque dá errado, e no mesmo processo isso fecharia a janela sem nada na
+tela. É `fork` e não `spawn` porque o canal de mensagens vem junto — e é por
+ele que o endereço do túnel chega depois.
+
+**O endereço público virou variável.** O `PUBLIC_ORIGIN` era lido uma vez, no
+arranque, e o `start:fast` resolvia esperando o túnel para só então subir o
+servidor. Num app isso é uma tela de espera antes de qualquer coisa — na
+primeira execução, com 50 MB de `cloudflared` para baixar no meio. Então o
+servidor sobe na hora, em localhost, e recebe o endereço quando ele nascer.
+
+Escolhido um canal de `fork` em vez de uma rota HTTP de propósito: uma rota
+precisaria de um segredo para não deixar qualquer um na rede local reescrever
+de onde saem os convites, e um segredo a mais é uma coisa a mais para guardar,
+girar e vazar. O canal já é privado ao par pai/filho e não escuta em porta
+nenhuma.
+
+**A ordem na criação da sala não é intercambiável.** O túnel primeiro, a sala
+depois. O convite é carimbado com o endereço que existir no instante em que ele
+é emitido, e uma sala criada antes do túnel produz um link para `127.0.0.1` —
+que não dá erro nenhum: abre uma página em branco na casa da outra pessoa.
+
+**Porta 0.** Quem escolhe é o sistema. "A porta 3001 já está sendo usada" era o
+tropeço mais comum do caminho por terminal, e no app ele deixa de existir.
+
+**Nada de `.env`.** Quem baixou um instalador não vai abrir um editor de texto
+para gerar um segredo de 32 bytes. O `SESSION_SECRET` nasce na primeira
+execução e fica na pasta de dados do usuário — e fica, em vez de ser sorteado a
+cada abertura, porque o ingresso de uma sala é assinado com ele: trocá-lo
+invalidaria todo link já distribuído.
+
+**Sem asar.** O empacotamento normal do Electron junta o programa num arquivo
+só que só o processo do Electron sabe ler — e o servidor aqui é um processo
+novo, que não herda esse leitor. Com asar ligado, a janela abre e o servidor
+morre dizendo que não achou `server/index.js`. Contornar exigiria desempacotar
+`server/`, `shared/` e `node_modules` inteiros, que é tudo o que existe.
+
+**As dependências do servidor moram no `package.json` da raiz.** É de lá que o
+electron-builder monta a árvore do que empacotar — do arquivo onde está o
+`main`. Declaradas só no workspace de `server/`, `express`, `ws` e `dotenv`
+não entravam no instalador, e o erro só aparecia na máquina de quem instalasse.
+
 ## Estrutura
 
 ```
@@ -164,6 +226,13 @@ scripts/
   configurar.mjs  assistente de configuração
   tunel.mjs       sobe o túnel e grava o endereço no .env
   smoke.mjs       teste do servidor ponta a ponta, sem navegador
+app/
+  main.js         processo principal do Electron: janela, IPC, captura de tela
+  servidor.js     sobe o server/ num processo filho e conversa com ele
+  hospedagem.js   as quatro situações do endereço público
+  config.js       o que substitui o .env dentro do app
+  preload.cjs     a ponte entre a janela e o processo principal
+  seletor/        escolher tela ou janela, onde o sistema não tem o seu
 ```
 
 ## Testes

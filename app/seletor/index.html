@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Escolha o que mostrar</title>
+    <link rel="stylesheet" href="seletor.css" />
+  </head>
+  <body>
+    <h1>Escolha o que mostrar</h1>
+
+    <p id="vazio" class="vazio" hidden>
+      Nada para mostrar. Se o sistema pediu permissão de gravação de tela, aceite e tente de novo.
+    </p>
+
+    <section id="secaoTelas" hidden>
+      <h2>Telas</h2>
+      <div id="telas" class="grade"></div>
+    </section>
+
+    <section id="secaoJanelas" hidden>
+      <h2>Janelas</h2>
+      <div id="janelas" class="grade"></div>
+    </section>
+
+    <footer>
+      <button id="cancelar" type="button">Cancelar</button>
+    </footer>
+
+    <script type="module" src="seletor.js"></script>
+  </body>
+</html>

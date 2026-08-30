@@ -49,12 +49,24 @@ const ENDERECO = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
  * e nesse caso nem um `gravar: true` explícito passa por cima, porque apagar
  * o endereço fixo de quem tem túnel nomeado nunca é o que se quis pedir.
  *
- * @param {{aoEndereco?: (origem: string | null) => void, rapido?: boolean, gravar?: boolean}} opcoes
+ * `porta`, `config` e `cache` existem por causa do app, que não tem `.env`
+ * nenhum para consultar: a porta é sorteada a cada execução e o cache mora na
+ * pasta de dados do usuário, porque um app empacotado não escreve dentro de si
+ * mesmo. Sem eles, tudo continua saindo do `.env`, como sempre saiu.
+ *
+ * @param {{aoEndereco?: (origem: string | null) => void, rapido?: boolean, gravar?: boolean, porta?: string | number, config?: string, cache?: string}} opcoes
  */
-export async function abrirTunel({ aoEndereco = () => {}, rapido = false, gravar } = {}) {
+export async function abrirTunel({
+  aoEndereco = () => {},
+  rapido = false,
+  gravar,
+  porta: portaPedida,
+  config: configPedido,
+  cache,
+} = {}) {
   const env = lerEnv();
-  const porta = env.PORT || '3001';
-  const config = rapido ? '' : env.TUNEL_CONFIG || '';
+  const porta = String(portaPedida ?? env.PORT ?? '') || '3001';
+  const config = rapido ? '' : (configPedido ?? env.TUNEL_CONFIG ?? '');
 
   // Um túnel descartável nunca sobrescreve o endereço de quem tem túnel
   // nomeado, nem quando quem pediu foi o `start:fast`. O fixo é a configuração
@@ -70,14 +82,14 @@ export async function abrirTunel({ aoEndereco = () => {}, rapido = false, gravar
     ? ['--config', config, 'tunnel', '--no-autoupdate', 'run']
     : [
         '--config',
-        configNeutro(),
+        configNeutro(cache),
         'tunnel',
         '--no-autoupdate',
         '--url',
         `http://localhost:${porta}`,
       ];
 
-  const cloudflared = await garantirCloudflared();
+  const cloudflared = await garantirCloudflared({ pasta: cache });
 
   // Sem shell: o caminho do binário vem resolvido, então não há .cmd no meio.
   const tunel = spawn(cloudflared, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -94,7 +106,9 @@ export async function abrirTunel({ aoEndereco = () => {}, rapido = false, gravar
     const doArquivo = hostnameDoConfig(config);
     const origem = doArquivo || env.PUBLIC_ORIGIN || '';
 
-    if (origem && origem !== env.PUBLIC_ORIGIN) {
+    // `escrever` também aqui: quem passou `gravar: false` não quer o .env
+    // tocado por motivo nenhum, nem por este, que é uma correção.
+    if (escrever && origem && origem !== env.PUBLIC_ORIGIN) {
       gravarEnv({ PUBLIC_ORIGIN: origem });
       console.log(
         `${cor.amarelo}  O .env apontava para outro endereço — corrigi para o do túnel.${cor.fim}`,
@@ -160,9 +174,9 @@ function hostnameDoConfig(caminho) {
  * responde 404 — sem erro no log, sem nada que aponte para a causa. Foram
  * horas até achar isto: com o arquivo isolado, o mesmo comando responde 200.
  */
-function configNeutro() {
-  const caminho = path.join(PASTA, 'tunel-rapido.yml');
-  fs.mkdirSync(PASTA, { recursive: true });
+function configNeutro(pasta = PASTA) {
+  const caminho = path.join(pasta, 'tunel-rapido.yml');
+  fs.mkdirSync(pasta, { recursive: true });
   // Uma chave inócua, e não um arquivo só com comentário: vazio o cloudflared
   // reclama com um ERR no log, que assusta sem significar nada. Esta repete o
   // que a linha de comando já diz.

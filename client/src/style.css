@@ -29,7 +29,11 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 "gg sans", "Segoe UI", system-ui, sans-serif;
+  font:
+    15px/1.5 'gg sans',
+    'Segoe UI',
+    system-ui,
+    sans-serif;
   overflow: hidden;
 }
 
@@ -236,7 +240,9 @@ body {
   border-radius: 999px;
   background: var(--line);
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .divider:hover::before,
@@ -310,7 +316,9 @@ body {
   background: rgba(0, 0, 0, 0.65);
   color: #fff;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .tile:hover .tile-stop {
@@ -736,6 +744,32 @@ button {
   white-space: nowrap;
 }
 
+/* O convite existe para ser copiado, então é um <button> de verdade e não uma
+   div com clique pendurado: cursor, foco pelo teclado e Enter vêm de graça. */
+.convite {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.convite:hover,
+.convite:focus-visible {
+  background: rgba(0, 0, 0, 0.85);
+  outline: none;
+}
+
+/* Sem endereço no ar. O mesmo amarelo dos botões que pedem atenção, mas sem o
+   pulso deles: ali o amarelo chama para um clique que resolve, e aqui não há
+   nada atrás para clicar — é só o aviso de que ninguém de fora entra agora. */
+.pill.atencao {
+  background: #f0b232;
+  color: #111214;
+}
+
 /* Encostado embaixo, como a barra de controles de uma call. O respiro menor
    embaixo do que em cima é de propósito: a barra pertence à borda da tela. */
 .pill {
@@ -811,7 +845,9 @@ button {
   background: var(--tile);
   color: var(--text);
   font: 500 14px/1 inherit;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .btn svg {
@@ -1012,7 +1048,9 @@ button {
   text-align: left;
   color: var(--text);
   font: inherit;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .room-card:hover {

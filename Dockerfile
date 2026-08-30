@@ -19,6 +19,11 @@ COPY package.json package-lock.json ./
 COPY client/package.json client/
 COPY server/package.json server/
 
+# O app de computador é devDependency da raiz, e o Electron baixa uns 100 MB de
+# binário na instalação. Esta imagem serve o site num servidor Linux sem tela;
+# ela nunca abre janela nenhuma.
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
 RUN npm ci
 
 COPY . .

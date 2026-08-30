@@ -1,4 +1,5 @@
 client/dist/
+dist-app/
 node_modules/
 .cache/
 site/

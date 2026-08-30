@@ -1,12 +1,20 @@
 {
   "name": "discord-screen",
   "version": "0.1.0",
+  "description": "Mostre sua tela para quem quiser. Quem cria a sala hospeda a sala.",
+  "author": "Sala de Tela",
   "private": true,
+  "main": "app/main.js",
   "type": "module",
   "workspaces": [
     "client",
     "server"
   ],
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
   "scripts": {
     "postinstall": "node -e \"console.log('\\n  Pronto. Agora rode:  npm run configurar\\n')\"",
     "configurar": "node scripts/configurar.mjs",
@@ -16,6 +24,9 @@
     "dev:rapido": "node scripts/dev.mjs --rapido",
     "start": "npm run build && npm -w server run start",
     "start:fast": "node scripts/start-fast.mjs",
+    "app": "npm run build && electron .",
+    "app:build": "npm run build && electron-builder --win",
+    "app:dir": "npm run build && electron-builder --win --dir",
     "build": "npm -w client run build",
     "smoke": "node scripts/smoke.mjs",
     "smoke:controle": "node scripts/smoke-controle.mjs",
@@ -32,6 +43,8 @@
     "@eslint/js": "^10.0.1",
     "@vitest/coverage-v8": "^4.1.11",
     "concurrently": "^9.1.2",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.11.0",

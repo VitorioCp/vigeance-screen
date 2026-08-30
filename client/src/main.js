@@ -1,7 +1,7 @@
 import { DiscordSDK } from '@discord/embedded-app-sdk';
 import { createPlayer } from './player.js';
 import { createAudio } from './audio.js';
-import { createBroadcaster } from '../../shared/broadcaster.js';
+import { createBroadcaster, fonteIndisponivel } from '../../shared/broadcaster.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -12,6 +12,15 @@ const inDiscord = params.has('frame_id');
 
 // Dentro da Activity todo tráfego precisa passar pelo proxy do Discord.
 const P = inDiscord ? '/.proxy' : '';
+
+// A ponte do app de computador, quando esta janela é ele. Existir significa
+// que este navegador não é um navegador: é o programa instalado, esta máquina
+// é quem hospeda, e há um túnel para abrir antes de qualquer sala existir.
+//
+// Fora do app é null, e todo caminho que depende dela é pulado — a mesma
+// página continua funcionando como sempre funcionou pelo link.
+const ponte = window.salaDeTela ?? null;
+const noApp = Boolean(ponte);
 
 // Um decoder e um canvas por transmissor, indexados pelo slot que o servidor
 // atribuiu. Os canvas vivem fora do DOM entre renderizações e são movidos para
@@ -291,7 +300,11 @@ function renderGrid() {
   if (chegada && activeSlot !== null) {
     const pedida = chegada.slot;
     const alvo = pedida !== null && available.has(pedida) ? pedida : activeSlot;
-    console.info('[sala] assistindo automaticamente', { pedida, alvo, slots: [...available.keys()] });
+    console.info('[sala] assistindo automaticamente', {
+      pedida,
+      alvo,
+      slots: [...available.keys()],
+    });
     // Zerado antes de qualquer coisa: watchSlot renderiza de novo, e a segunda
     // passada não pode reabrir este mesmo caminho.
     const cheia = chegada.cheia;
@@ -862,6 +875,17 @@ function renderBar() {
   cam.dataset.tip = rotuloCam;
   cam.setAttribute('aria-label', rotuloCam);
 
+  // Veio som e ele foi barrado — tela inteira, quase sempre. A engrenagem pisca
+  // porque é atrás dela que está a troca de fonte; sem isso o aviso passa no
+  // toast e ninguém acha o caminho.
+  const somPendente = Boolean(myBroadcast?.somBloqueado?.());
+  $('liveSettings').classList.toggle('atencao', somPendente);
+  const tipAjustes = somPendente
+    ? 'Som barrado — clique para escolher a fonte'
+    : 'Ajustes da transmissão';
+  $('liveSettings').dataset.tip = tipAjustes;
+  $('liveSettings').setAttribute('aria-label', tipAjustes);
+
   // O controle de som só existe quando há som para controlar.
   const temSom = [...streams.values()].some((s) => s.audio);
   $('volumeBox').hidden = !temSom;
@@ -1001,6 +1025,7 @@ async function boot() {
   clearTimeout(vigia);
 
   renderProfileButton();
+  await ligarPonteDoApp();
 
   // Dentro do Discord não existe lobby: a atividade já É a sala daquela call, e
   // oferecer uma lista de salas ali seria oferecer uma escolha entre uma opção.
@@ -1155,6 +1180,17 @@ function remove(key) {
 
 // -------------------------------------------------------------------- lobby
 
+/**
+ * O endereço público desta máquina, segundo o app.
+ *
+ * Fora do app fica parado em "parado" para sempre, e nada o consulta. Dentro
+ * dele é o que separa uma sala que só existe aqui de uma sala que alguém
+ * consegue abrir — e o `erro` depois do `no-ar` é o túnel tendo caído com o
+ * link já distribuído, que é a única coisa aqui que não se pode deixar
+ * silenciosa.
+ */
+let hospedagem = { situacao: 'parado', origem: null, erro: null };
+
 /** Tokens da sala atual. null = estamos no lobby. */
 let roomTokens = null;
 let roomInfo = null;
@@ -1206,10 +1242,12 @@ async function showLobby() {
   $('grid').hidden = true;
   $('empty').hidden = true;
   $('roomPill').hidden = true;
+  $('convite').hidden = true;
   $('leaveRoom').hidden = true;
   $('roomSettings').hidden = true;
   $('share').hidden = true;
   $('camera').hidden = true;
+  $('liveSettings').hidden = true;
 
   // O dock inteiro sai de cena: todo controle dele é de dentro da sala, e o
   // cabeçalho do lobby já traz perfil e criar sala.
@@ -1303,6 +1341,9 @@ function roomCard(room) {
 
 async function enterRoom(room, password) {
   if (!session) return;
+  // Entrar numa sala do app é hospedá-la: a pessoa pode ter voltado ao lobby,
+  // ou aberto o app numa sala que ficou guardada de ontem.
+  if (!(await garantirEndereco())) return;
 
   try {
     const tokens = await post(`${P}/api/rooms/join`, {
@@ -1345,7 +1386,13 @@ function askPassword(room, error) {
  */
 async function joinById(id) {
   // Token guardado de uma visita anterior: entra sem pedir a senha de novo.
-  const saved = read(`sala:${id}`);
+  //
+  // No app o atalho não serve. O convite guardado ali dentro carrega o endereço
+  // público de quando foi emitido, e o túnel descartável daquela execução já
+  // morreu — a sala abriria com um link que não leva a lugar nenhum. Passar
+  // pelo `enterRoom` custa uma requisição e reemite tudo com o endereço de
+  // agora.
+  const saved = noApp ? null : read(`sala:${id}`);
   if (saved) {
     try {
       const { tokens, name } = JSON.parse(saved);
@@ -1381,6 +1428,7 @@ function openRoom(tokens, room) {
   $('empty').hidden = false;
   $('share').hidden = false;
   $('camera').hidden = false;
+  $('liveSettings').hidden = false;
   $('people').hidden = false;
   $('loginBtn').hidden = true;
 
@@ -1388,6 +1436,7 @@ function openRoom(tokens, room) {
   // confundir esta: quem fecha a atividade é o próprio Discord.
   $('roomPill').hidden = inDiscord;
   $('leaveRoom').hidden = inDiscord;
+  renderConvite();
 
   clearInterval(lobbyTimer);
   lobbyTimer = null;
@@ -1399,6 +1448,132 @@ function openRoom(tokens, room) {
 
 // A limpeza toda — inclusive parar de transmitir — vive em showLobby.
 $('leaveRoom').addEventListener('click', () => showLobby());
+
+// ------------------------------------------------- hospedar (só dentro do app)
+
+/**
+ * O convite: o endereço desta sala, para quem está de fora.
+ *
+ * É o viewerToken numa URL do túnel. Quem abrir entra direto, sem senha e sem
+ * lista — a mesma porta que o botão "assistir no site" já usava, agora
+ * apontando para uma sala hospedada aqui.
+ */
+function linkDoConvite() {
+  if (!hospedagem.origem || !roomTokens) return null;
+
+  const url = new URL(hospedagem.origem);
+  url.searchParams.set('t', roomTokens.viewerToken);
+  return url.toString();
+}
+
+/**
+ * A pílula do convite, no alto.
+ *
+ * Mostra o domínio e não a URL inteira: o token é longo, ilegível e não
+ * acrescenta nada a quem olha — quem precisa dele é o clique, que copia tudo.
+ */
+function renderConvite() {
+  const pilula = $('convite');
+
+  if (!noApp || !inRoom()) {
+    pilula.hidden = true;
+    return;
+  }
+
+  pilula.hidden = false;
+
+  if (hospedagem.situacao === 'no-ar') {
+    let dominio = hospedagem.origem;
+    try {
+      dominio = new URL(hospedagem.origem).host;
+    } catch {
+      /* endereço estranho: mostra como veio */
+    }
+    pilula.textContent = `Convite · ${dominio}`;
+    pilula.dataset.tip = 'Clique para copiar o link desta sala';
+    pilula.classList.remove('atencao');
+    return;
+  }
+
+  // Sem endereço no ar não há convite a copiar, e fingir que há seria mandar
+  // alguém colar um link morto no chat.
+  pilula.textContent = hospedagem.situacao === 'abrindo' ? 'Abrindo endereço…' : 'Sem endereço';
+  pilula.dataset.tip = hospedagem.erro ?? '';
+  pilula.classList.toggle('atencao', hospedagem.situacao === 'erro');
+}
+
+/**
+ * Garante que existe um endereço público antes de a sala existir.
+ *
+ * A ordem importa e não é intercambiável: o servidor carimba o endereço dentro
+ * de cada convite no instante em que o emite. Criar a sala antes do túnel
+ * produziria um convite apontando para 127.0.0.1 — um link que abre só no
+ * computador de quem o mandou, e que não dá erro nenhum: abre uma página em
+ * branco na casa da outra pessoa.
+ *
+ * @returns {Promise<boolean>} false quando não deu, com o aviso já na tela.
+ */
+async function garantirEndereco() {
+  if (!noApp) return true;
+  if (hospedagem.situacao === 'no-ar') return true;
+
+  renderConvite();
+
+  try {
+    hospedagem = await ponte.hospedar();
+  } catch (err) {
+    hospedagem = { situacao: 'erro', origem: null, erro: err.message };
+  }
+
+  renderConvite();
+
+  if (hospedagem.situacao === 'no-ar') return true;
+
+  toast(hospedagem.erro ?? 'Não deu para abrir o endereço público.', true);
+  return false;
+}
+
+/** Liga o app à página. Fora dele, não faz nada. */
+async function ligarPonteDoApp() {
+  if (!noApp) return;
+
+  // Quem sabe se há endereço no ar é o processo principal, e ele sobrevive a
+  // um F5 desta janela. Sem perguntar, um simples recarregar mostraria "sem
+  // endereço" com o túnel de pé — e a pessoa abriria outro por cima.
+  hospedagem = await ponte.estado();
+
+  // O texto de fábrica fala de canal de voz, que é a vida dentro do Discord.
+  // Aqui as salas são as desta máquina, e só existem enquanto ela estiver
+  // ligada.
+  $('lobbySub').textContent = 'Neste computador';
+  $('createAppNote').hidden = false;
+
+  // O estado também muda sem ninguém clicar em nada: um túnel descartável cai
+  // sozinho de vez em quando, e quando cai o link que já está no chat de
+  // alguém para de responder. Sem este aviso a janela continuaria exibindo um
+  // endereço morto como se estivesse tudo bem.
+  ponte.aoMudarEstado((estado) => {
+    const caiu = hospedagem.situacao === 'no-ar' && estado.situacao === 'erro';
+    hospedagem = estado;
+    renderConvite();
+    if (caiu) toast(estado.erro ?? 'O endereço público caiu.', true);
+  });
+
+  $('convite').addEventListener('click', async () => {
+    const link = linkDoConvite();
+    if (!link) return toast(hospedagem.erro ?? 'Ainda não há endereço para copiar.', true);
+
+    await ponte.copiar(link);
+    toast('Link copiado. Mande para quem vai assistir.');
+  });
+
+  $('pararHospedar').addEventListener('click', async () => {
+    hospedagem = await ponte.encerrar();
+    $('roomModal').hidden = true;
+    renderConvite();
+    toast('Endereço público fechado. Quem estava assistindo de fora caiu.');
+  });
+}
 
 /** Client id e versão do bundle, decididos pelo servidor. */
 async function loadConfig() {
@@ -1829,9 +2004,11 @@ function trazerAba(fonte) {
 async function abrirCaptura(fonte) {
   if (!roomTokens) return;
 
-  // Só a tela tem chance de nascer aqui dentro; o Discord anula o getUserMedia
-  // no iframe, então a câmera vai direto para a aba.
-  if (fonte === 'tela' && (await broadcastFromHere())) return;
+  // Dentro do app as duas nascem aqui: é uma janela do Chromium sem sandbox
+  // de terceiro no caminho, e tanto getDisplayMedia quanto getUserMedia
+  // respondem. No navegador, dentro do Discord, só a tela tem chance — o
+  // iframe anula o getUserMedia, e a câmera vai direto para a aba.
+  if ((noApp || fonte === 'tela') && (await broadcastFromHere(fonte))) return;
 
   abrirLink(fonte);
 }
@@ -1969,6 +2146,91 @@ $('camera').addEventListener('click', () => {
   ligarFonte('camera');
 });
 
+// --------------------------------------------- ajustes da transmissão
+
+/**
+ * O único lugar onde qualidade e quadros são escolhidos.
+ *
+ * Com algo no ar a engrenagem ajusta aquela transmissão; parada, ela edita o
+ * que valerá na próxima. Nos dois casos a escolha fica guardada: quem pediu
+ * 5 Mb/s uma vez não quer reescolher a cada abertura.
+ */
+function escolherOpcao(id, valor, padrao) {
+  const el = $(id);
+  el.value = String(valor);
+  // Valor fora da lista — preferência guardada por uma versão antiga, ou URL
+  // editada à mão — deixa o select em branco, e aí salvar mandaria NaN para o
+  // encoder.
+  if (!el.value) el.value = String(padrao);
+}
+
+function abrirAjustes() {
+  const live = Boolean(myBroadcast);
+  const atual = live ? myBroadcast.getSettings() : ajustes;
+
+  $('ajustesSub').textContent = live
+    ? 'Vale na hora, sem derrubar quem está assistindo.'
+    : 'Vale na próxima vez que você começar a transmitir.';
+  $('ajustesGo').textContent = live ? 'Aplicar' : 'Salvar';
+
+  escolherOpcao('mQuality', atual.bitrate, AJUSTES_PADRAO.bitrate);
+  escolherOpcao('mFps', atual.fps, AJUSTES_PADRAO.fps);
+
+  // A saída para quem mostra a tela inteira e quer som: o vídeo continua o
+  // mesmo e o som passa a vir de uma aba ou de uma janela, que são as fontes
+  // isoladas do Discord. Só cabe na transmissão nascida aqui dentro — a da aba
+  // de captura tem o mesmo botão na própria página.
+  $('ajustesSom').hidden = !live;
+  if (live) {
+    $('ajustesSom').textContent = myBroadcast.temSom()
+      ? 'Trocar a fonte do som'
+      : 'Som de uma aba ou janela';
+  }
+
+  $('ajustesModal').hidden = false;
+}
+
+const fecharAjustes = () => {
+  $('ajustesModal').hidden = true;
+};
+
+$('liveSettings').addEventListener('click', abrirAjustes);
+$('ajustesCancel').addEventListener('click', fecharAjustes);
+
+// Clique no fundo fecha; dentro do card, não.
+$('ajustesModal').addEventListener('click', (e) => {
+  if (e.target === $('ajustesModal')) fecharAjustes();
+});
+
+$('ajustesSom').addEventListener('click', async () => {
+  if (!myBroadcast) return;
+  try {
+    await myBroadcast.trocarSom();
+    toast('Som ligado, vindo da fonte escolhida.');
+    fecharAjustes();
+    renderBar();
+  } catch (err) {
+    // Cancelar o seletor é rotina, não erro.
+    if (err.name !== 'NotAllowedError') toast(err.message, true);
+  }
+});
+
+$('ajustesGo').addEventListener('click', () => {
+  const bitrate = Number($('mQuality').value);
+  const fps = Number($('mFps').value);
+
+  ajustes = { ...ajustes, bitrate, fps };
+  store('ajustes', JSON.stringify(ajustes));
+
+  // Transmissão nascida aqui dentro: o encoder troca de qualidade no ar, sem
+  // derrubar quem está assistindo.
+  myBroadcast?.setQuality({ bitrate, fps });
+  // Nascida na aba de captura: só o servidor alcança a conexão dela, e ela
+  // costuma estar aberta desde antes desta mexida.
+  ws?.send(JSON.stringify({ type: 'config-broadcast', opcoes: opcoesDaFonte() }));
+
+  fecharAjustes();
+});
 
 /** Espelha o volume atual no botão e no cursor, sem tocar no áudio. */
 function renderVolume() {
@@ -2000,7 +2262,12 @@ $('volume').addEventListener('input', (e) => setVolume(Number(e.target.value) / 
 /**
  * Transmite a partir daqui mesmo, sem abrir aba.
  *
- * Só funciona se o Discord conceder `display-capture` ao iframe da Activity.
+ * Dentro do app é o caminho normal, e a aba de captura nunca chega a existir:
+ * a janela do Electron concede `display-capture` a si mesma, que é exatamente
+ * o que o iframe do Discord nega. No navegador dentro da Activity continua
+ * sendo uma tentativa que quase sempre falha, e a aba externa é a rede de
+ * segurança.
+ *
  * Retorna true quando o fluxo foi resolvido — transmitindo, ou a pessoa
  * cancelou o seletor — e false quando resta cair para a aba externa.
  *
@@ -2009,8 +2276,11 @@ $('volume').addEventListener('input', (e) => setVolume(Number(e.target.value) / 
  * na hora, sem nunca desenhar o seletor, enquanto cancelar exige que alguém
  * tenha visto a janela e clicado.
  */
-async function broadcastFromHere() {
-  if (!navigator.mediaDevices?.getDisplayMedia || !window.VideoEncoder) return false;
+async function broadcastFromHere(fonte = 'tela') {
+  // `fonteIndisponivel` sabe o que cada fonte precisa: a câmera pede
+  // getUserMedia, a tela pede getDisplayMedia, e perguntar pela errada
+  // recusaria uma captura que ia funcionar.
+  if (!window.VideoEncoder || fonteIndisponivel(fonte)) return false;
 
   if (!roomTokens) return false;
   const shareToken = new URL(roomTokens.shareUrl).searchParams.get('t');
@@ -2020,10 +2290,15 @@ async function broadcastFromHere() {
 
   const b = createBroadcaster({
     wsUrl: `${proto}://${location.host}${P}/ws?t=${encodeURIComponent(shareToken)}`,
+    fonte,
     bitrate: ajustes.bitrate,
     fps: ajustes.fps,
     audio: true,
-    onAviso: (m) => toast(m, true),
+    onAviso: (m) => {
+      toast(m, true);
+      // O aviso quase sempre é o som barrado, e é a barra que mostra a saída.
+      renderBar();
+    },
     onEnd: () => {
       myBroadcast = null;
       renderBar();
@@ -2060,6 +2335,23 @@ $('createModal').addEventListener('click', (e) => {
 
 $('createGo').addEventListener('click', async () => {
   const name = $('createName').value.trim();
+
+  // O endereço primeiro, a sala depois — e nunca ao contrário. O convite é
+  // carimbado com o endereço que existir no instante em que a sala nasce.
+  //
+  // Abrir o túnel leva alguns segundos, e na primeira vez baixa o cloudflared
+  // inteiro no meio. Sem trancar o botão dá para clicar em "Criar" três vezes
+  // achando que não pegou, e sair com três salas.
+  const botao = $('createGo');
+  const rotulo = botao.textContent;
+  botao.disabled = true;
+  if (noApp && hospedagem.situacao !== 'no-ar') botao.textContent = 'Abrindo o endereço…';
+
+  const pronto = await garantirEndereco();
+
+  botao.disabled = false;
+  botao.textContent = rotulo;
+  if (!pronto) return;
 
   try {
     const tokens = await post(`${P}/api/rooms/create`, {
@@ -2115,6 +2407,7 @@ $('roomSave').addEventListener('click', async () => {
 
 function openRoomSettings() {
   $('roomSub').textContent = roomInfo?.name ?? '';
+  $('pararHospedar').hidden = !noApp || hospedagem.situacao !== 'no-ar';
   $('roomPass').value = '';
   $('roomModal').hidden = false;
   $('roomPass').focus();
@@ -2123,8 +2416,6 @@ function openRoomSettings() {
 $('roomSettings').addEventListener('click', openRoomSettings);
 
 // ----------------------------------------------------------------- painel
-
-
 
 /**
  * As barras somem com o cursor parado e voltam ao primeiro movimento. Valem
@@ -2173,7 +2464,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
 
   // Fecha o modal aberto mais recente antes de mexer no modo ampliado.
-  for (const id of ['profileModal', 'roomModal', 'joinModal', 'createModal']) {
+  for (const id of ['profileModal', 'roomModal', 'joinModal', 'createModal', 'ajustesModal']) {
     if (!$(id).hidden) {
       $(id).hidden = true;
       return;

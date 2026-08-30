@@ -28,7 +28,19 @@ const {
 // Uma barra sobrando no fim se propaga: o shareUrl vira "//share.html" e o
 // redirect do OAuth vira "//auth/callback", que não bate com o endereço
 // cadastrado no portal. O login falha sem explicar nada.
-const PUBLIC_ORIGIN = ORIGEM_CRUA.replace(/[/]+$/, '');
+const semBarraFinal = (origem) => String(origem).replace(/[/]+$/, '');
+
+// `let`, e não `const`, por causa do app: lá o servidor sobe em localhost no
+// mesmo instante em que a janela abre, e o endereço público só nasce alguns
+// segundos depois, quando o túnel responde. Esperar por ele para só então
+// escutar a porta era o desenho do "start:fast", e num app isso vira uma tela
+// de espera antes de qualquer coisa — na primeira execução, com 50 MB de
+// cloudflared para baixar no meio.
+//
+// Quem troca o valor é a mensagem { tipo: 'origem' } lá embaixo, e ninguém
+// mais. Fora do app nada manda essa mensagem, então isto continua sendo o que
+// sempre foi: o que veio do .env, lido uma vez.
+let publicOrigin = semBarraFinal(ORIGEM_CRUA);
 
 const isProd = NODE_ENV === 'production';
 const ADMIN_ID = String(DISCORD_ADMIN_ID).trim();
@@ -478,7 +490,7 @@ function issueRoomTokens(roomId, me) {
   return {
     roomId,
     viewerToken: signToken({ ...base, role: 'viewer' }),
-    shareUrl: `${PUBLIC_ORIGIN}/share.html?t=${encodeURIComponent(
+    shareUrl: `${publicOrigin}/share.html?t=${encodeURIComponent(
       signToken({ ...base, role: 'broadcaster' }),
     )}`,
   };
@@ -622,7 +634,7 @@ app.post('/api/rooms/password', (req, res) => {
 // Quem entra pelo site não tem canal de voz, então todas essas pessoas
 // compartilham um lobby só.
 const WEB_INSTANCE = 'web';
-const REDIRECT_URI = `${PUBLIC_ORIGIN}/auth/callback`;
+const REDIRECT_URI = `${publicOrigin}/auth/callback`;
 
 function discordAuthorizeUrl(state = null) {
   const url = new URL('https://discord.com/oauth2/authorize');
@@ -695,7 +707,7 @@ app.get('/auth/callback', async (req, res) => {
         },
         8 * 60 * 60,
       );
-      const secure = PUBLIC_ORIGIN.startsWith('https://') ? '; Secure' : '';
+      const secure = publicOrigin.startsWith('https://') ? '; Secure' : '';
       res.setHeader(
         'Set-Cookie',
         `${ADMIN_COOKIE}=${adminSession}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${8 * 60 * 60}${secure}`,
@@ -763,7 +775,7 @@ app.get('/api/admin/me', (req, res) => {
 });
 
 app.post('/api/admin/logout', (_req, res) => {
-  const secure = PUBLIC_ORIGIN.startsWith('https://') ? '; Secure' : '';
+  const secure = publicOrigin.startsWith('https://') ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
     `${ADMIN_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`,
@@ -779,8 +791,10 @@ app.get('/api/admin/metrics', requireAdmin, (_req, res) => {
     system: systemSnapshot(),
     configuration: {
       environment: NODE_ENV,
-      port: Number(PORT),
-      publicOrigin: PUBLIC_ORIGIN,
+      // A porta que o sistema deu, não a que foi pedida: com PORT=0 elas são
+      // coisas diferentes, e é a de verdade que serve para alguém conferir.
+      port: server.address()?.port ?? Number(PORT),
+      publicOrigin,
       clientId: DISCORD_CLIENT_ID || null,
       botConfigured: Boolean(DISCORD_BOT_TOKEN),
       adminId: ADMIN_ID,
@@ -1130,8 +1144,38 @@ function avisarBuildVelho() {
   }
 }
 
+/**
+ * Canal com quem criou este processo — na prática, o app.
+ *
+ * Só existe quando o servidor nasce de um `fork`. Rodando por "npm start", por
+ * Docker ou no VPS, `process.send` é undefined e nada aqui acontece.
+ *
+ * É um canal e não uma rota HTTP de propósito. Uma rota precisaria de um
+ * segredo para não deixar qualquer um na rede local reescrever o endereço de
+ * onde saem os convites — e um segredo a mais para guardar, girar e vazar. O
+ * canal do fork já é privado ao par pai/filho, não escuta em porta nenhuma e
+ * não existe para quem não é o pai.
+ */
+process.on('message', (msg) => {
+  if (msg?.tipo !== 'origem') return;
+
+  const nova = semBarraFinal(msg.origem ?? '');
+  if (!nova) return;
+
+  publicOrigin = nova;
+  console.log(`  Endereço público agora é ${publicOrigin}`);
+});
+
 server.listen(PORT, () => {
-  const local = `http://localhost:${PORT}`;
+  // Do servidor, não da variável: com PORT=0 o sistema é que escolhe, e é o
+  // único jeito de saber qual foi. O app usa isso para não ter mais como
+  // esbarrar numa porta ocupada.
+  const porta = server.address().port;
+  const local = `http://localhost:${porta}`;
+
+  // Quem criou o processo precisa da porta antes de poder abrir a janela ou o
+  // túnel. Vai aqui dentro porque só neste ponto ela existe de verdade.
+  process.send?.({ tipo: 'pronto', porta });
 
   console.log('');
   console.log(`  Sala de Tela no ar em  ${local}`);
@@ -1140,8 +1184,8 @@ server.listen(PORT, () => {
 
   if (DISCORD_CLIENT_ID) {
     console.log(`  Discord: ligado · aplicação ${DISCORD_CLIENT_ID}`);
-    console.log(`  Endereço público: ${PUBLIC_ORIGIN}`);
-    console.log(`  Redirect que precisa estar no portal: ${PUBLIC_ORIGIN}/auth/callback`);
+    console.log(`  Endereço público: ${publicOrigin}`);
+    console.log(`  Redirect que precisa estar no portal: ${publicOrigin}/auth/callback`);
   } else {
     console.log('  Discord: desligado (só navegador).');
     console.log('  Para usar dentro do Discord, rode: npm run configurar');
@@ -1149,7 +1193,7 @@ server.listen(PORT, () => {
 
   if (ADMIN_ID) {
     console.log(`  Painel administrativo: ${local}/admin`);
-    if (PUBLIC_ORIGIN !== local) console.log(`  Painel publico: ${PUBLIC_ORIGIN}/admin`);
+    if (publicOrigin !== local) console.log(`  Painel publico: ${publicOrigin}/admin`);
   } else {
     console.log('  Painel administrativo: desligado (defina DISCORD_ADMIN_ID no .env).');
   }
@@ -1157,7 +1201,7 @@ server.listen(PORT, () => {
   // Erro fácil de cometer e difícil de diagnosticar: com PUBLIC_ORIGIN
   // apontando para o proxy, a página de captura abre dentro do sandbox do
   // Discord e getDisplayMedia volta a ser bloqueado.
-  if (PUBLIC_ORIGIN.includes('discordsays.com')) {
+  if (publicOrigin.includes('discordsays.com')) {
     console.error('');
     console.error('  ERRO: o endereço público aponta para o proxy do Discord.');
     console.error('  A tela de captura precisa abrir fora do Discord, senão a');
@@ -1166,7 +1210,7 @@ server.listen(PORT, () => {
 
   avisarBuildVelho();
 
-  if (DISCORD_CLIENT_ID && PUBLIC_ORIGIN.startsWith('http://localhost')) {
+  if (DISCORD_CLIENT_ID && publicOrigin.startsWith('http://localhost')) {
     console.log('');
     console.log('  Aviso: o Discord não alcança localhost. Rode: npm run tunel');
   }

@@ -3,11 +3,20 @@ name: ci
 on:
   push:
     branches: [main]
+    # A tag é o que publica o app: o instalador do Windows vira anexo da
+    # Release daquela versão.
+    tags: ['v*']
   pull_request:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# O binário do Electron são uns 100 MB baixados na instalação, e só o job que
+# monta o app precisa dele. Os outros instalam as mesmas dependências para
+# rodar lint, testes e build do site — nenhum abre janela nenhuma.
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
 jobs:
   check:
@@ -107,6 +116,60 @@ jobs:
       # dele o vitest sai diferente de zero, e o PR fica vermelho.
       - name: Coverage
         run: npm run coverage
+
+  app:
+    # Windows porque é o alvo que o electron-builder monta aqui, e porque é
+    # onde estão as pessoas para quem o app existe: quem não quer abrir um
+    # terminal para mostrar a própria tela.
+    runs-on: windows-latest
+    # Este job é o único que precisa do Electron de verdade. Vazio, e não "0":
+    # quem lê a variável só olha se ela tem conteúdo, e "0" tem.
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: ''
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar
+        run: npm ci
+
+      # Num PR, só empacota — sem montar instalador. Pega em um minuto o que
+      # quebra de verdade aqui (um caminho que saiu do `files`, uma dependência
+      # que ficou só no workspace do servidor) sem pagar os cinco minutos do
+      # NSIS por revisão.
+      - name: Empacotar
+        if: github.event_name == 'pull_request'
+        run: npm run app:dir
+
+      - name: Instalador
+        if: github.event_name != 'pull_request'
+        run: npm run app:build
+
+      # Fica baixável em qualquer commit da main, não só nas tags: é assim que
+      # se testa uma correção antes de decidir que ela vira versão.
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: sala-de-tela-windows
+          path: dist-app/*.exe
+          if-no-files-found: error
+
+      # Sem action de terceiro: o `gh` já vem no runner e o token também.
+      - name: Anexar à Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Cria a Release na primeira vez; se ela já existir — porque a tag foi
+        # empurrada de novo, ou porque alguém a criou à mão —, só troca os
+        # anexos.
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist-app/*.exe --generate-notes             || gh release upload "${GITHUB_REF_NAME}" dist-app/*.exe --clobber
 
   docker:
     # A imagem é entrega, não conveniência: o deploy no VPS sobe exatamente

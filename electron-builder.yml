@@ -1,0 +1,68 @@
+# Como o app vira um instalador.
+#
+# Duas escolhas aqui merecem explicação, porque as duas são o contrário do
+# padrão e as duas custaram tempo para descobrir:
+#
+# 1. `asar: false`. O empacotamento normal do Electron junta o programa inteiro
+#    num arquivo só, e ali dentro nada é executável de verdade — é um formato
+#    de arquivo que o Electron sabe ler. Só que o servidor daqui não roda no
+#    processo do Electron: ele é um processo separado, criado com `fork`, e um
+#    processo novo não herda esse leitor. Com asar ligado, o app abre, a janela
+#    aparece e o servidor morre dizendo que não achou `server/index.js`. Dá para
+#    contornar desempacotando server/, shared/ e node_modules inteiros — que é
+#    tudo o que existe. Um asar contendo nada é pior que nenhum.
+#
+# 2. As dependências do servidor moram no package.json da raiz, e não no de
+#    server/. É de lá que o electron-builder monta a árvore do que empacotar:
+#    ele parte do package.json onde está o `main`. Declaradas só no workspace,
+#    express, ws e dotenv simplesmente não entravam no instalador, e o erro só
+#    aparecia na máquina de quem instalasse.
+
+appId: com.saladetela.app
+productName: Sala de Tela
+copyright: Sala de Tela
+
+asar: false
+
+directories:
+  output: dist-app
+
+# Só o que roda. O que compila (vite), o que testa (vitest) e o que verifica
+# (eslint) ficam de fora — junto com os testes, que viajariam por engano por
+# morarem lado a lado com o código que testam.
+files:
+  - app/**/*
+  - server/**/*
+  - shared/**/*
+  - client/dist/**/*
+  - '!**/*.test.js'
+  # Só os três scripts que o app importa. O resto de scripts/ é linha de
+  # comando: assistente de configuração, criação de túnel nomeado, smokes.
+  - scripts/tunel.mjs
+  - scripts/cloudflared.mjs
+  - scripts/env.mjs
+  - package.json
+
+win:
+  # O mesmo personagem do README. 1254x1254, que o electron-builder reduz para
+  # os tamanhos que o Windows pede.
+  icon: personagem.png
+  target:
+    # Instalador para quem quer o app no menu iniciar, e um executável solto
+    # para quem não quer instalar nada — ou não pode, numa máquina de trabalho
+    # sem direito de administrador.
+    - nsis
+    - portable
+
+nsis:
+  # Por usuário, não por máquina: instalar em Arquivos de Programas pede
+  # administrador, e pedir senha de administrador para um app de mostrar tela é
+  # um pedido grande demais pelo que ele faz.
+  perMachine: false
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Sala de Tela
+
+portable:
+  artifactName: SaladeTela-portatil-${version}.${ext}

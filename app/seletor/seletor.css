@@ -1,0 +1,118 @@
+/* As mesmas cores do resto do app: esta janela é uma continuação daquela, não
+   uma caixa de diálogo do sistema. */
+:root {
+  --bg: #1e1f22;
+  --tile: #2b2d31;
+  --line: #35373c;
+  --text: #f2f3f5;
+  --muted: #b5bac1;
+  --accent: #5865f2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  padding: 20px 20px 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    15px/1.5 'gg sans',
+    'Segoe UI',
+    system-ui,
+    sans-serif;
+  /* A janela inteira rola; o rodapé fica colado embaixo. */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+
+h2 {
+  margin: 18px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.vazio {
+  color: var(--muted);
+}
+
+.grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.fonte {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--tile);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fonte:hover,
+.fonte:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.fonte img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
+  border-radius: 4px;
+}
+
+/* O nome de uma janela é o título dela, e títulos são longos. Uma linha só,
+   cortada, mantém os cartões do mesmo tamanho. */
+.fonte span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+footer {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  padding: 16px 0;
+  background: var(--bg);
+  text-align: right;
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--tile);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}

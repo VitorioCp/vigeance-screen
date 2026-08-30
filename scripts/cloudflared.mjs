@@ -96,11 +96,18 @@ async function baixar(url, destino) {
 
 /**
  * Caminho de um cloudflared pronto para usar. Baixa se precisar.
+ *
+ * `pasta` existe por causa do app: empacotado, o projeto inteiro mora dentro
+ * de um asar somente leitura, e o `.cache/` daqui não pode ser escrito. Lá o
+ * lugar do binário é a pasta de dados do usuário. Quem chama pela linha de
+ * comando não passa nada e continua caindo no `.cache/` de sempre.
+ *
+ * @param {{pasta?: string}} opcoes
  * @returns {Promise<string>}
  */
-export async function garantirCloudflared() {
+export async function garantirCloudflared({ pasta = PASTA } = {}) {
   const t = alvo();
-  const local = t && path.join(PASTA, t.binario);
+  const local = t && path.join(pasta, t.binario);
 
   if (local && fs.existsSync(local)) return local;
 
@@ -114,17 +121,17 @@ export async function garantirCloudflared() {
     );
   }
 
-  fs.mkdirSync(PASTA, { recursive: true });
+  fs.mkdirSync(pasta, { recursive: true });
 
   console.log(
     `${cor.fraco}  Primeira vez: buscando o cloudflared (uns 50 MB, fica guardado).${cor.fim}`,
   );
 
   if (t.tgz) {
-    const pacote = path.join(PASTA, t.asset);
+    const pacote = path.join(pasta, t.asset);
     await baixar(`${BASE}/${t.asset}`, pacote);
     // tar existe em qualquer macOS; é só este caso que precisa dele.
-    const r = spawnSync('tar', ['-xzf', pacote, '-C', PASTA], { stdio: 'inherit' });
+    const r = spawnSync('tar', ['-xzf', pacote, '-C', pasta], { stdio: 'inherit' });
     fs.rmSync(pacote, { force: true });
     if (r.status !== 0) throw new Error('não consegui extrair o pacote do cloudflared.');
   } else {

@@ -2,59 +2,87 @@
 
 # Sala de Tela
 
-Mostre sua tela para quem está na mesma call do Discord.
-Uma pessoa compartilha, todo mundo assiste sem sair do Discord.
+Mostre sua tela para quem você quiser, por um link.
 
-Também funciona como site normal, fora do Discord, com salas que você cria e
-compartilha por link.
+**Quem cria a sala hospeda a sala.** Você abre o app, cria uma sala, e o seu
+computador vira o servidor dela. Quem vai assistir não instala nada: abre o
+link no navegador e pronto.
+
+A sala existe enquanto o app estiver aberto. Fechou, acabou — não fica nada
+no ar, nem numa nuvem de ninguém.
 
 ---
 
-## O que você precisa antes
+## Usar
 
-**1. Node.js** — é o programa que faz tudo isso rodar.
+**1. Baixe o app.** O instalador do Windows está na
+[página de versões](../../releases): baixe o `.exe` e execute.
 
-Baixe em [nodejs.org](https://nodejs.org), escolha a versão **LTS** e instale
-clicando em avançar até o fim. Não precisa configurar nada.
+> **O Windows vai reclamar na primeira vez.** Vai aparecer uma tela azul
+> dizendo "O Windows protegeu o computador". Clique em **Mais informações** e
+> depois em **Executar assim mesmo**.
+>
+> Isso acontece porque o instalador não é assinado — a assinatura é um
+> certificado que custa uns US$ 200 por ano. O aviso não é sobre vírus: é o
+> Windows dizendo que não conhece quem publicou.
 
-**2. Google Chrome, Edge, Brave ou Opera** — só para quem vai *mostrar* a tela.
-Para *assistir*, qualquer navegador serve.
+**2. Abra o app e clique em "Criar sala."** Ele leva alguns segundos abrindo um
+endereço público para o seu computador. Na primeira vez, um pouco mais: ele
+baixa o `cloudflared` (uns 50 MB) e guarda para as próximas.
+
+**3. Clique no convite, lá em cima, para copiar o link.** Mande no chat, no
+grupo, onde for. Quem abrir cai direto na sua sala.
+
+**4. Clique em "Compartilhar tela."** O seletor do Windows abre ali mesmo, na
+janela do app. Escolha uma tela ou uma janela, e pronto.
+
+### Para assistir
+
+Nada a instalar. Abra o link que te mandaram, em qualquer navegador, em
+qualquer computador. Até no celular, com sorte.
+
+### O endereço muda
+
+Cada vez que você abre o app e cria uma sala, o endereço é outro. O link antigo
+para de funcionar. Se ele cair enquanto a sala está de pé, o convite lá em cima
+fica amarelo avisando.
+
+---
+
+## Antes de compartilhar
+
+**Chrome, Edge, Brave ou Opera** — só para quem vai *mostrar* a tela **pelo
+navegador**, sem o app. Para *assistir*, qualquer navegador serve, e quem usa o
+app não precisa de navegador nenhum.
 
 > Não funciona no celular para compartilhar. Celular não deixa nenhum site
-> capturar a tela. Assistir pelo celular também costuma falhar.
+> capturar a tela.
 
 ---
 
-## Ligar tudo (um comando)
+## Rodar sem o app, pelo terminal
 
-**1.** Baixe este projeto e descompacte numa pasta.
+O app é uma casca em volta do mesmo servidor e do mesmo site que estão neste
+repositório. Dá para rodar tudo direto, sem instalar app nenhum — é o caminho
+de quem quer deixar a coisa no ar para várias pessoas, ou mexer no código.
 
-**2.** Abra a pasta, clique na barra de endereço do explorador de arquivos,
-digite `cmd` e aperte Enter. Vai abrir uma janela preta — é ali que você digita
-os comandos.
+Precisa do **Node.js**: baixe em [nodejs.org](https://nodejs.org), escolha a
+versão **LTS** e vá clicando em avançar.
 
-**3.** Digite, um de cada vez, esperando cada um terminar:
+Depois, na pasta do projeto:
 
 ```
 npm install
 npm run start:fast
 ```
 
-E pronto. Esse segundo comando faz tudo sozinho: se faltar alguma configuração
-ele pergunta na hora, depois monta o site, abre o endereço público e liga o
-servidor. **Uma janela só.**
+Esse segundo comando faz tudo sozinho: configura se faltar, monta o site, abre
+o endereço público e liga o servidor, numa janela só. `Ctrl + C` derruba tudo
+junto.
 
-Na primeira vez ele baixa o `cloudflared` (uns 50 MB) e guarda em `.cache/`
-dentro da pasta do projeto. Você não instala nada à mão.
-
-Para desligar, aperte `Ctrl + C` na janela preta. Isso derruba tudo junto.
-
-### Só quero testar no navegador
-
-Se ele perguntar como você quer usar, escolha a opção **sem Discord**. Aí é só
-abrir <http://localhost:3001> em duas janelas, criar uma sala numa, entrar pela
-outra e clicar em **Compartilhar tela** — você vê sua própria tela chegando do
-outro lado.
+Para só experimentar, sem endereço público: `npm start` e abra
+<http://localhost:3001> em duas janelas — crie uma sala numa, entre pela outra
+e clique em **Compartilhar tela**.
 
 ---
 
@@ -159,16 +187,32 @@ O endereço público mudou. Vá no site do Discord em **Activities → URL Mappi
 e troque o *Target* pelo endereço que aparece na janela preta. Para isso não
 acontecer nunca mais, rode `npm run tunel:criar`.
 
+**O Windows diz que "protegeu o computador" ao abrir o instalador**
+É esperado: o instalador não é assinado. Clique em **Mais informações** e depois
+em **Executar assim mesmo**.
+
+**O link que eu mandei não abre mais**
+O endereço muda a cada vez que o app abre uma sala, e some quando o app fecha.
+Crie a sala de novo e mande o convite novo.
+
+**O convite ficou amarelo dizendo "Sem endereço"**
+O túnel caiu. Ninguém de fora consegue entrar enquanto ele estiver assim. Volte
+para a lista de salas e crie a sala de novo.
+
 **"A porta 3001 já está sendo usada"**
-Tem outra janela do programa aberta. Feche a outra e tente de novo.
+Só acontece no caminho por terminal: tem outra janela do programa aberta. Feche
+a outra e tente de novo. O app não passa por isso — ele pede uma porta livre ao
+sistema.
 
 **O botão de compartilhar abre uma aba e não acontece nada**
-Essa aba precisa continuar aberta enquanto você transmite. Pode voltar para o
+Não acontece dentro do app: lá o seletor abre na própria janela. Pelo navegador,
+essa aba precisa continuar aberta enquanto você transmite. Pode voltar para o
 Discord normalmente, só não feche a aba.
 
 **"npm não é reconhecido como um comando"**
 O Node.js não foi instalado, ou a janela preta foi aberta antes da instalação.
-Feche a janela, abra de novo e tente outra vez.
+Feche a janela, abra de novo e tente outra vez. Quem usa o app não precisa de
+Node nenhum.
 
 **Não sai som**
 Abra o botão ⓘ na barra de baixo e olhe a linha **Som**. Ela diz em qual dos
@@ -207,7 +251,9 @@ Aí nenhum túnel é necessário.
 | Comando | Para quê |
 |---|---|
 | `npm install` | Baixa o que o programa precisa. Só na primeira vez. |
-| `npm run start:fast` | **Liga tudo.** Configura se faltar, e sobe numa janela só. |
+| `npm run app` | Abre o app, com o código desta pasta. |
+| `npm run app:build` | Monta o instalador do Windows, em `dist-app/`. |
+| `npm run start:fast` | **Liga tudo** por terminal. Configura se faltar, e sobe numa janela só. |
 | `npm run tunel:criar` | Uma vez só: cria um endereço fixo, que não muda mais. |
 | `npm run configurar` | Refaz as perguntas da configuração. |
 | `npm run smoke` | Confere se está tudo funcionando por dentro. |
