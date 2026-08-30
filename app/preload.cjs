@@ -34,6 +34,9 @@ if (esperada && location.origin === esperada) {
     encerrar: () => ipcRenderer.invoke('sala:encerrar'),
     estado: () => ipcRenderer.invoke('sala:estado'),
 
+    /** Abre a sala de outra pessoa numa janela deste app. */
+    visitar: (url) => ipcRenderer.invoke('sala:visitar', url),
+
     /** Avisa a cada mudança de estado. Devolve como parar de ouvir. */
     aoMudarEstado: (callback) => {
       const ouvinte = (_evento, estado) => callback(estado);

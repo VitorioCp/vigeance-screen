@@ -34,6 +34,7 @@ import {
 import { garantirSegredo } from './config.js';
 import { subirServidor } from './servidor.js';
 import { criarHospedagem } from './hospedagem.js';
+import { interpretarLink } from './link.js';
 import { abrirTunel } from '../scripts/tunel.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,11 @@ if (!app.requestSingleInstanceLock()) app.quit();
 let janela = null;
 let servidor = null;
 let hospedagem = null;
+let origemLocal = null;
+
+// Salas de outras pessoas abertas neste app. Guardadas só para não serem
+// coletadas enquanto estiverem na tela.
+const visitas = new Set();
 
 // ------------------------------------------------------------ seletor de tela
 
@@ -151,7 +157,7 @@ async function abrir() {
     },
   });
 
-  const origemLocal = `http://127.0.0.1:${servidor.porta}`;
+  origemLocal = `http://127.0.0.1:${servidor.porta}`;
 
   hospedagem = criarHospedagem({
     abrirTunel,
@@ -162,7 +168,9 @@ async function abrir() {
 
   session.defaultSession.setDisplayMediaRequestHandler(
     async (_pedido, callback) => {
-      const fonte = await pedirFonte(janela);
+      // A janela em foco, e não a principal: quem pediu a tela pode ser uma
+      // sala visitada. Preso na janela errada, o seletor abriria atrás dela.
+      const fonte = await pedirFonte(BrowserWindow.getFocusedWindow() ?? janela);
       // Sem argumento é a recusa: a página recebe NotAllowedError, o mesmo que
       // receberia se a pessoa fechasse o seletor do navegador.
       if (!fonte) return callback();
@@ -217,6 +225,65 @@ async function abrir() {
   await janela.loadURL(`${origemLocal}/`);
 }
 
+/**
+ * A sala de outra pessoa, numa janela deste app.
+ *
+ * **Sem preload, de propósito.** Esta página vem da máquina de outra pessoa, e
+ * a ponte do app abre túneis, lê a área de transferência e abre programas. A
+ * janela principal tem esses poderes porque serve uma página nossa; esta não
+ * serve, e por isso não os recebe. O `preload.cjs` ainda confere a origem por
+ * conta própria — mas a defesa que vale é não pendurar a ponte aqui.
+ *
+ * O que ela ganha é o que o navegador não dá: o seletor de tela nativo, que
+ * está registrado na sessão padrão. Quem entra pelo app e resolve mostrar a
+ * tela também não passa pela aba de captura.
+ *
+ * @returns {{ok: true} | {erro: string}}
+ */
+function abrirVisita(bruto) {
+  // A validação é aqui e não na página: o que vem da janela é pedido, não
+  // ordem. Ver app/link.js.
+  const { url, erro } = interpretarLink(bruto);
+  if (erro) return { erro };
+
+  const visita = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 900,
+    minHeight: 620,
+    backgroundColor: '#000000',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+
+  const visitada = url.origin;
+
+  visita.once('ready-to-show', () => visita.show());
+  visita.on('closed', () => visitas.delete(visita));
+
+  visita.webContents.setWindowOpenHandler(({ url: destino }) => {
+    abrirNoNavegador(destino);
+    return { action: 'deny' };
+  });
+
+  // Sair da sala visitada é sair para a internet, e para isso existe o
+  // navegador. A janela fica presa naquele endereço.
+  visita.webContents.on('will-navigate', (evento, destino) => {
+    if (mesmaOrigem(destino, visitada)) return;
+    evento.preventDefault();
+    abrirNoNavegador(destino);
+  });
+
+  visitas.add(visita);
+  visita.loadURL(url.toString());
+  return { ok: true };
+}
+
 function mesmaOrigem(url, origem) {
   try {
     return new URL(url).origin === origem;
@@ -265,6 +332,8 @@ ipcMain.handle('sala:encerrar', () => {
 });
 
 ipcMain.handle('sala:estado', () => hospedagem.estado());
+
+ipcMain.handle('sala:visitar', (_evento, url) => abrirVisita(url));
 
 ipcMain.handle('sala:copiar', (_evento, texto) => clipboard.writeText(String(texto ?? '')));
 

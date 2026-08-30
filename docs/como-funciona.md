@@ -188,6 +188,18 @@ depois. O convite é carimbado com o endereço que existir no instante em que el
 é emitido, e uma sala criada antes do túnel produz um link para `127.0.0.1` —
 que não dá erro nenhum: abre uma página em branco na casa da outra pessoa.
 
+**A sala de outra pessoa abre numa janela sem preload.** O app entra por link
+além de criar, e essa janela carrega uma página que vem da máquina de outra
+pessoa. A ponte do app abre túneis, lê a área de transferência e abre
+programas — a janela principal a recebe porque serve uma página nossa; a
+visitada não serve, e não recebe. O `preload.cjs` ainda confere `location.origin`
+por conta própria, mas a defesa que vale é não pendurar a ponte ali.
+
+O que a visita ganha é o seletor de tela nativo, que está registrado na sessão
+padrão: quem entra pelo app e resolve mostrar a tela também não passa pela aba
+de captura. E o endereço colado é validado no processo principal, nunca na
+página — ver `app/link.js`, que existe separado justamente para ter teste.
+
 **Porta 0.** Quem escolhe é o sistema. "A porta 3001 já está sendo usada" era o
 tropeço mais comum do caminho por terminal, e no app ele deixa de existir.
 
@@ -232,6 +244,7 @@ app/
   hospedagem.js   as quatro situações do endereço público
   config.js       o que substitui o .env dentro do app
   preload.cjs     a ponte entre a janela e o processo principal
+  link.js         o que pode virar janela: a validação do convite colado
   seletor/        escolher tela ou janela, onde o sistema não tem o seu
 ```
 

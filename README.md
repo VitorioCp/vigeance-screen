@@ -38,8 +38,17 @@ janela do app. Escolha uma tela ou uma janela, e pronto.
 
 ### Para assistir
 
-Nada a instalar. Abra o link que te mandaram, em qualquer navegador, em
-qualquer computador. Até no celular, com sorte.
+**Pelo navegador, sem instalar nada.** Abra o link que te mandaram, em qualquer
+navegador, em qualquer computador. Até no celular, com sorte. É o caminho de
+quem só quer ver.
+
+**Pelo app, se você já tiver.** Clique em **Entrar por link**, cole o convite, e
+a sala abre numa janela separada. Vale a pena quando você também vai mostrar a
+sua tela: no app o seletor de tela abre na própria janela, e pelo navegador você
+passa pela aba de captura, que precisa ficar aberta o tempo todo.
+
+Entrar por link não hospeda nada. Quem hospeda continua sendo só quem criou a
+sala.
 
 ### O endereço muda
 

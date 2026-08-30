@@ -1265,7 +1265,7 @@ async function showLobby() {
   lobbyTimer = setInterval(() => {
     // Nenhum modal aberto: recarregar sob o cursor tiraria o card do lugar no
     // meio de um clique.
-    const busy = ['createModal', 'joinModal'].some((id) => !$(id).hidden);
+    const busy = ['createModal', 'joinModal', 'linkModal'].some((id) => !$(id).hidden);
     if (!busy && !$('lobby').hidden) loadRooms();
   }, LOBBY_REFRESH_MS);
 }
@@ -1533,6 +1533,57 @@ async function garantirEndereco() {
   return false;
 }
 
+/**
+ * O campo que aceita o convite de outra pessoa.
+ *
+ * Quem entra por aqui não hospeda nada: não sobe túnel, não emite convite, não
+ * aparece na lista de salas desta máquina. Ele só abre, numa janela separada,
+ * a sala que vive no computador de quem a criou.
+ *
+ * A validação de verdade é do outro lado da ponte, não daqui: o que a página
+ * manda é pedido, não ordem, e é o processo principal que decide o que vira
+ * janela.
+ */
+function ligarEntrarPorLink() {
+  const fechar = () => {
+    $('linkModal').hidden = true;
+  };
+
+  $('entrarLink').addEventListener('click', () => {
+    $('linkUrl').value = '';
+    $('linkError').hidden = true;
+    $('linkModal').hidden = false;
+    $('linkUrl').focus();
+  });
+
+  $('linkCancel').addEventListener('click', fechar);
+
+  $('linkModal').addEventListener('click', (e) => {
+    if (e.target === $('linkModal')) fechar();
+  });
+
+  $('linkUrl').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('linkGo').click();
+  });
+
+  $('linkGo').addEventListener('click', async () => {
+    const resposta = await ponte.visitar($('linkUrl').value.trim());
+
+    // O erro fica dentro do modal, e não num toast: quem errou o link precisa
+    // do campo na frente para corrigir, e o toast sumiria em seis segundos
+    // levando a explicação junto.
+    if (resposta?.erro) {
+      $('linkError').textContent = resposta.erro;
+      $('linkError').hidden = false;
+      $('linkUrl').focus();
+      return;
+    }
+
+    fechar();
+    toast('Abrindo a sala numa janela nova.');
+  });
+}
+
 /** Liga o app à página. Fora dele, não faz nada. */
 async function ligarPonteDoApp() {
   if (!noApp) return;
@@ -1547,6 +1598,12 @@ async function ligarPonteDoApp() {
   // ligada.
   $('lobbySub').textContent = 'Neste computador';
   $('createAppNote').hidden = false;
+
+  // Só no app: no navegador o link já se abre sozinho, e um campo para colar
+  // um endereço dentro de uma página seria pedir para digitar o que a barra de
+  // endereço acima já faz.
+  $('entrarLink').hidden = false;
+  ligarEntrarPorLink();
 
   // O estado também muda sem ninguém clicar em nada: um túnel descartável cai
   // sozinho de vez em quando, e quando cai o link que já está no chat de
